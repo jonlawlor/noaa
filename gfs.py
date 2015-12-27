@@ -96,7 +96,7 @@ def parse_inv(inv_raw):
     """
     inv_str = inv_raw.decode("ascii")
     inv_str = inv_str.split("\n")
-    inv_str = [i.split(":") for i in inv_str]
+    inv_str = [i.split(":") for i in inv_str if len(i) > 0]
     # find the byte location of each variable
     inv = {}
 
@@ -104,10 +104,11 @@ def parse_inv(inv_raw):
         if len(s) is 0:
             continue
         name = s[3]
+        level = s[4]
         brange = s[1] + "-"
-        if i != len(inv_str):
+        if i < len(inv_str)-2:
             brange = brange + str(int(inv_str[i+1][1])-1)
-        inv[name] = brange
+        inv[(name, level)] = brange
     return inv
 
 
@@ -123,7 +124,7 @@ def fetch_url(url, range=None):
     """
     buffer = io.BytesIO()
     c = pycurl.Curl()
-    c.setopt(c.URL, 'http://pycurl.sourceforge.net/')
+    c.setopt(c.URL, url)
     c.setopt(c.WRITEDATA, buffer)
     if range is not None:
         c.setopt(c.RANGE, range)
@@ -156,6 +157,9 @@ class NCDCForecast:
         self._fetch_url = _fetch_ncdc_url
         self._grid = None
 
+    def __repr__(self):
+        return "NCDCForecast(" + self.asof + "," + self.hrs_out + "," + self.deg + ")"
+
     @property
     def asof(self):
         return self._asof
@@ -180,18 +184,19 @@ class NCDCForecast:
             1.0: 3,
             0.5: 4,
             }
-        return grids[self.deg]
+        self._grid = grids[self.deg]
+        return self._grid
 
     def inv_url(self):
         """ The url for the inventory file associated with the forecast.
         """
-        return "ftp://nomads.ncdc.noaa.gov/GFS/Grid" + self.grid + "/" + self.asof.strftime("%Y%m") + "/" + self.asof.strftime("%Y%m%d") + "/gfs_" + self.grid + "_" + self.asof.strftime("%Y%m%d") + "_" + self.asof.strftime("%H") + "00" + "_" + "{:0>3d}".format(self.asof) + ".inv"
+        return "ftp://nomads.ncdc.noaa.gov/GFS/Grid" + str(self.grid) + "/" + self.asof.strftime("%Y%m") + "/" + self.asof.strftime("%Y%m%d") + "/gfs_" + str(self.grid) + "_" + self.asof.strftime("%Y%m%d") + "_" + self.asof.strftime("%H") + "00" + "_" + "{:0>3}".format(self.hrs_out) + ".inv"
 
 
     def grib_url(self):
         """ The url for the grib file associated with the forecast.
         """
-        return "ftp://nomads.ncdc.noaa.gov/GFS/Grid" + self.grid + "/" + self.asof.strftime("%Y%m") + "/" + self.asof.strftime("%Y%m%d") + "/gfs_" + self.grid + "_" + self.asof.strftime("%Y%m%d") + "_" + self.asof.strftime("%H") + "00" + "_" + "{:0>3d}".format(self.asof) + ".grb2"
+        return "ftp://nomads.ncdc.noaa.gov/GFS/Grid" + str(self.grid) + "/" + self.asof.strftime("%Y%m") + "/" + self.asof.strftime("%Y%m%d") + "/gfs_" + str(self.grid) + "_" + self.asof.strftime("%Y%m%d") + "_" + self.asof.strftime("%H") + "00" + "_" + "{:0>3}".format(self.hrs_out) + ".grb2"
 
     @property
     def inv(self):
@@ -206,7 +211,7 @@ class NCDCForecast:
         """ fetches the forecast from the NCDC.
 
         Args:
-            vars(List[str]): the names of the variables to fetch.  If None, then
+            vars(List[(str, str)]): the names of the variables to fetch.  If None, then
             all variables are fetched.
 
         Returns:
@@ -222,5 +227,5 @@ class NCDCForecast:
             vars = list(inv.keys())
 
         return {
-            k: self._fetch_url(self.grib_url(), inv[k])
+            k: self._fetch_url(self.grib_url(), inv[k]) for k in vars
         }
