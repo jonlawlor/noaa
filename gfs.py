@@ -229,3 +229,106 @@ class NCDCForecast:
         return {
             k: self._fetch_url(self.grib_url(), inv[k]) for k in vars
         }
+
+
+class NCEPForecast:
+    """ NCDCForecast is a GFS forecast sourced from the NCEP's http site.
+
+    """
+    def __init__(self, asof, hrs_out, deg):
+        """ Initialize a forecast from the NCEP.
+
+        Args:
+            asof (datetime.datetime): the date that the forecast was produced on.
+
+            hrs_out (int): the number of hours in the future that the particular
+                forecast is for.
+
+            deg (float): the size of the grid used for the forecast.  currently
+                the GFS has 0.5 and 1.0 degree forecasts.
+
+        """
+        self._asof = asof
+        self._hrs_out = hrs_out
+        self._deg = deg
+        self._inv = None
+        self._fetch_url = _fetch_ncep_url
+        self._grid = None
+
+    def __repr__(self):
+        return "NCEPForecast(" + self.asof + "," + self.hrs_out + "," + self.deg + ")"
+
+    @property
+    def asof(self):
+        return self._asof
+
+    @property
+    def hrs_out(self):
+        return self._hrs_out
+
+    @property
+    def deg(self):
+        return self._deg
+
+    @property
+    def grid(self):
+        """ grid is the grid number of the given forecast resolution.
+        see http://nomads.ncdc.noaa.gov/data.php for details.
+        """
+        if self._grid is not None:
+            return self._grid
+
+        # TODO(jonlawlor): fix grid definitions
+        grids = {
+            1.0: 3,
+            0.5: 4,
+            }
+        self._grid = grids[self.deg]
+        return self._grid
+
+    def inv_url(self):
+        """ The url for the inventory file associated with the forecast.
+        """
+        # looks like
+        # http://www.ftp.ncep.noaa.gov/data/nccf/com/gfs/prod/gfs.2015122018/gfs.t18z.pgrb2.0p50.f033.idx
+        return "ftp://nomads.ncdc.noaa.gov/GFS/Grid" + str(self.grid) + "/" + self.asof.strftime("%Y%m") + "/" + self.asof.strftime("%Y%m%d") + "/gfs_" + str(self.grid) + "_" + self.asof.strftime("%Y%m%d") + "_" + self.asof.strftime("%H") + "00" + "_" + "{:0>3}".format(self.hrs_out) + ".inv"
+
+
+    def grib_url(self):
+        """ The url for the grib file associated with the forecast.
+        """
+        # looks like
+        # http://www.ftp.ncep.noaa.gov/data/nccf/com/gfs/prod/gfs.2015122018/gfs.t18z.pgrb2.0p50.f033
+        return "ftp://nomads.ncdc.noaa.gov/GFS/Grid" + str(self.grid) + "/" + self.asof.strftime("%Y%m") + "/" + self.asof.strftime("%Y%m%d") + "/gfs_" + str(self.grid) + "_" + self.asof.strftime("%Y%m%d") + "_" + self.asof.strftime("%H") + "00" + "_" + "{:0>3}".format(self.hrs_out) + ".grb2"
+
+    @property
+    def inv(self):
+        if self._inv is not None:
+            return self._inv
+
+        raw_inv = self._fetch_url(self.inv_url())
+        self._inv = parse_inv(raw_inv)
+        return self._inv
+
+    def fetch(self, vars=None):
+        """ fetches the forecast from the NCEP.
+
+        Args:
+            vars(List[(str, str)]): the names of the variables to fetch.  If None, then
+            all variables are fetched.
+
+        Returns:
+            A dictionary of variables and their contents.  Note that if vars is
+            None then this will currently take a long time, with a delay between
+            each var.
+
+        TODO(jonlawlor): determine which blocks to retrieve and then split them
+        into variables afterwards.
+        """
+        inv = self.inv()
+        if vars is None:
+            vars = list(inv.keys())
+
+        return {
+            k: self._fetch_url(self.grib_url(), inv[k]) for k in vars
+        }
